@@ -205,6 +205,7 @@ def auto_patchelf_file(
     runtime_deps: list[Path],
     append_rpaths: list[Path] = [],
     keep_libc: bool = False,
+    keep_rpath: bool = False,
     extra_args: list[str] = [],
 ) -> list[Dependency]:
     try:
@@ -244,7 +245,8 @@ def auto_patchelf_file(
     except ELFError:
         return []
 
-    rpath = []
+    with open_elf(path) as elf:
+        rpath = [] if not keep_rpath else [Path(p) for p in get_rpath(elf)]
     if file_is_dynamic_executable:
         print("setting interpreter of", path)
         subprocess.run(
@@ -260,7 +262,7 @@ def auto_patchelf_file(
         rpath += runtime_deps
 
     print("searching for dependencies of", path)
-    dependencies = []
+    dependencies = [] if not keep_rpath else [Dependency(path, "RPATH")]
     # Be sure to get the output of all missing dependencies instead of
     # failing at the first one, because it's more useful when working
     # on a new package where you don't yet know the dependencies.
@@ -339,6 +341,7 @@ def auto_patchelf(
     append_rpaths: list[Path] = [],
     keep_libc: bool = False,
     add_existing: bool = True,
+    keep_rpath: bool = False,
     extra_args: list[str] = [],
 ) -> None:
     if not paths_to_patch:
@@ -355,7 +358,7 @@ def auto_patchelf(
     for path in chain.from_iterable(glob(p, "*", recursive) for p in paths_to_patch):
         if not path.is_symlink() and path.is_file():
             dependencies += auto_patchelf_file(
-                path, runtime_deps, append_rpaths, keep_libc, extra_args
+                path, runtime_deps, append_rpaths, keep_libc, keep_rpath, extra_args
             )
 
     missing = [dep for dep in dependencies if not dep.found]
@@ -450,6 +453,12 @@ def main() -> None:
         help="Do not add the existing rpaths of the patched files to the list of directories to search for dependencies.",
     )
     parser.add_argument(
+        "--keep-rpath",
+        dest="keep_rpath",
+        action="store_true",
+        help="Do not remove the existing rpath of the patched files.",
+    )
+    parser.add_argument(
         "--extra-args",
         # Undocumented Python argparse feature: consume all remaining arguments
         # as values for this one. This means this argument should always be passed
@@ -473,6 +482,7 @@ def main() -> None:
         append_rpaths=args.append_rpaths,
         keep_libc=args.keep_libc,
         add_existing=args.add_existing,
+        keep_rpath=args.keep_rpath,
         extra_args=args.extra_args,
     )
 
