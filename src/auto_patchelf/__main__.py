@@ -50,7 +50,7 @@ def get_dependencies(elf: ELFFile) -> list[list[Path]]:
     for section in elf.iter_sections():
         if isinstance(section, DynamicSection):
             for tag in section.iter_tags("DT_NEEDED"):
-                dependencies.append([Path(tag.needed)])
+                dependencies.append([Path(tag.needed)])  # type: ignore
             break  # There is only one dynamic section
 
     return dependencies
@@ -84,10 +84,10 @@ def get_rpath(elf: ELFFile) -> list[str]:
     for section in elf.iter_sections():
         if isinstance(section, DynamicSection):
             for tag in section.iter_tags("DT_RUNPATH"):
-                return tag.runpath.split(":")
+                return tag.runpath.split(":")  # type: ignore
 
             for tag in section.iter_tags("DT_RPATH"):
-                return tag.rpath.split(":")
+                return tag.rpath.split(":")  # type: ignore
 
             break  # There is only one dynamic section
 
