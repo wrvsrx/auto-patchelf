@@ -9,6 +9,9 @@ mkShell {
     UV_PYTHON = "${python3}/bin/python";
     UV_PYTHON_DOWNLOADS = "never";
   };
+  shellHook = ''
+    source .venv/bin/activate
+  '';
   nativeBuildInputs = [
     uv
     python3
