@@ -141,7 +141,7 @@ def glob(path: Path, pattern: str, recursive: bool) -> Iterator[Path]:
         # We extend that behavior by matching the file name against the pattern.
         # This allows to pass single files instead of dirs to auto_patchelf,
         # for greater control on the files to consider.
-        return [path] if path.match(pattern) else []
+        return iter([path] if path.match(pattern) else [])
 
 
 cached_paths: set[Path] = set()
@@ -262,7 +262,7 @@ def auto_patchelf_file(
         rpath += runtime_deps
 
     print("searching for dependencies of", path)
-    dependencies = [] if not keep_rpath else [Dependency(path, "RPATH")]
+    dependencies = [] if not keep_rpath else [Dependency(path, Path("RPATH"))]
     # Be sure to get the output of all missing dependencies instead of
     # failing at the first one, because it's more useful when working
     # on a new package where you don't yet know the dependencies.
@@ -314,7 +314,7 @@ def auto_patchelf_file(
 
         if not was_found:
             dep_name = dep[0] if len(dep) == 1 else f"any({', '.join(map(str, dep))})"
-            dependencies.append(Dependency(path, dep_name, found=False))
+            dependencies.append(Dependency(path, Path(dep_name), found=False))
             print(f"    {dep_name} -> not found!")
 
     rpath.extend(append_rpaths)
