@@ -340,7 +340,7 @@ def auto_patchelf(
     ignore_missing: list[str] = [],
     append_rpaths: list[Path] = [],
     keep_libc: bool = False,
-    add_existing: bool = True,
+    search_existing: bool = True,
     keep_rpath: bool = False,
     extra_args: list[str] = [],
 ) -> None:
@@ -349,7 +349,7 @@ def auto_patchelf(
 
     # Add all shared objects of the current output path to the cache,
     # before lib_dirs, so that they are chosen first in find_dependency.
-    if add_existing:
+    if search_existing:
         populate_cache(paths_to_patch, recursive)
 
     populate_cache(lib_dirs)
@@ -447,10 +447,10 @@ def main() -> None:
         help="Attempt to search for and relink libc dependencies.",
     )
     parser.add_argument(
-        "--ignore-existing",
-        dest="add_existing",
+        "--no-search-existing",
+        dest="search_existing",
         action="store_false",
-        help="Do not add the existing rpaths of the patched files to the list of directories to search for dependencies.",
+        help="Do not search the existing rpaths of the patched files when searching for dependencies.",
     )
     parser.add_argument(
         "--keep-rpath",
@@ -481,7 +481,7 @@ def main() -> None:
         args.ignore_missing,
         append_rpaths=args.append_rpaths,
         keep_libc=args.keep_libc,
-        add_existing=args.add_existing,
+        search_existing=args.search_existing,
         keep_rpath=args.keep_rpath,
         extra_args=args.extra_args,
     )
