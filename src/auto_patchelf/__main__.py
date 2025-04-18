@@ -446,7 +446,7 @@ def auto_patchelf(
         )
 
 
-def main() -> None:
+def main_() -> None:
     parser = argparse.ArgumentParser(
         prog="auto-patchelf",
         description="auto-patchelf tries as hard as possible to patch the"
@@ -553,21 +553,23 @@ def main() -> None:
     )
 
 
-interpreter_path: Path = None  # type: ignore
-interpreter_osabi: str = None  # type: ignore
-interpreter_arch: str = None  # type: ignore
-libc_lib: Path = None  # type: ignore
-
-if __name__ == "__main__":
+def main():
+    interpreter_path: Path = None  # type: ignore
+    interpreter_osabi: str = None  # type: ignore
+    interpreter_arch: str = None  # type: ignore
+    libc_lib: Path = None  # type: ignore
     nix_support = Path(os.environ.get("NIX_BINTOOLS", DEFAULT_BINTOOLS)) / "nix-support"
     interpreter_path = Path((nix_support / "dynamic-linker").read_text().strip())
     libc_lib = Path((nix_support / "orig-libc").read_text().strip()) / "lib"
-
     with open_elf(interpreter_path) as interpreter:
         interpreter_osabi = get_osabi(interpreter)
         interpreter_arch = get_arch(interpreter)
 
     if interpreter_arch and interpreter_osabi and interpreter_path and libc_lib:
-        main()
+        main_()
     else:
         sys.exit("Failed to parse dynamic linker (ld) properties.")
+
+
+if __name__ == "__main__":
+    main()

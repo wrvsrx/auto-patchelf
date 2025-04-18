@@ -19,6 +19,7 @@
           { pkgs, ... }:
           {
             devShells.default = pkgs.callPackage ./shell.nix { };
+            packages.default = pkgs.python3.pkgs.callPackage ./default.nix { };
             formatter = pkgs.nixfmt-rfc-style;
           };
       }
