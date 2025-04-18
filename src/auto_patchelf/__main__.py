@@ -144,12 +144,13 @@ def glob(path: Path, pattern: str, recursive: bool) -> Iterator[Path]:
         return iter([path] if path.match(pattern) else [])
 
 
-cached_paths: set[Path] = set()
-soname_cache: DefaultDict[tuple[str, str], list[tuple[Path, str]]] = defaultdict(list)
+SonameCache = DefaultDict[tuple[str, str], list[tuple[Path, str]]]
 
 
-def populate_cache(initial: list[Path], recursive: bool = False) -> None:
+def generate_cache(initial: list[Path], recursive: bool = False) -> SonameCache:
     lib_dirs = list(initial)
+    cached_paths: set[Path] = set()
+    soname_cache: SonameCache = defaultdict(list)
 
     while lib_dirs:
         lib_dir = lib_dirs.pop(0)
@@ -185,11 +186,45 @@ def populate_cache(initial: list[Path], recursive: bool = False) -> None:
                 # Not an ELF file in the right format
                 pass
 
+    return soname_cache
 
-def find_dependency(soname: str, soarch: str, soabi: str) -> Optional[Path]:
+
+def find_dependency(
+    soname_cache: SonameCache,
+    soname: str,
+    soarch: str,
+    soabi: str,
+) -> Optional[Path]:
     for lib, libabi in soname_cache[(soname, soarch)]:
         if osabi_are_compatible(soabi, libabi):
             return lib
+    return None
+
+
+class PathSoPath(Path):
+    pass
+
+
+class LibSoPath(Path):
+    pass
+
+
+def find_dependency_(
+    paths_soname_cache: Optional[SonameCache],
+    libs_soname_cache: SonameCache,
+    soname: str,
+    soarch: str,
+    soabi: str,
+) -> PathSoPath | LibSoPath | None:
+    if paths_soname_cache:
+        found = find_dependency(paths_soname_cache, soname, soarch, soabi)
+        if found:
+            return PathSoPath(found)
+
+    found = find_dependency(libs_soname_cache, soname, soarch, soabi)
+    if found:
+        return LibSoPath(found)
+
     return None
 
 
@@ -201,11 +236,14 @@ class Dependency:
 
 
 def auto_patchelf_file(
+    paths_cache: Optional[SonameCache],
+    libs_cache: SonameCache,
     path: Path,
     runtime_deps: list[Path],
     append_rpaths: list[Path] = [],
     keep_libc: bool = False,
     keep_rpath: bool = False,
+    add_existing: bool = True,
     extra_args: list[str] = [],
 ) -> list[Dependency]:
     try:
@@ -262,7 +300,7 @@ def auto_patchelf_file(
         rpath += runtime_deps
 
     print("searching for dependencies of", path)
-    dependencies = [] if not keep_rpath else [Dependency(path, Path("RPATH"))]
+    dependencies = []
     # Be sure to get the output of all missing dependencies instead of
     # failing at the first one, because it's more useful when working
     # on a new package where you don't yet know the dependencies.
@@ -300,13 +338,23 @@ def auto_patchelf_file(
             elif is_libc and not keep_libc:
                 was_found = True
                 break
-            elif found_dependency := find_dependency(
-                candidate.name, file_arch, file_osabi
+            elif found_dependency := find_dependency_(
+                paths_cache,
+                libs_cache,
+                candidate.name,
+                file_arch,
+                file_osabi,
             ):
-                rpath.append(found_dependency)
-                dependencies.append(Dependency(path, candidate, found=True))
-                print(f"    {candidate} -> found: {found_dependency}")
                 was_found = True
+                patching = (
+                    add_existing and type(found_dependency) == PathSoPath
+                ) or type(found_dependency) == LibSoPath
+                print(
+                    f"    {candidate} -> found: {found_dependency} (would{' ' if patching else ' not '}patching)"
+                )
+                if patching:
+                    rpath.append(found_dependency)
+                    dependencies.append(Dependency(path, candidate, found=True))
                 break
             elif is_libc and keep_libc:
                 was_found = True
@@ -341,6 +389,7 @@ def auto_patchelf(
     append_rpaths: list[Path] = [],
     keep_libc: bool = False,
     search_existing: bool = True,
+    add_existing: bool = True,
     keep_rpath: bool = False,
     extra_args: list[str] = [],
 ) -> None:
@@ -350,15 +399,25 @@ def auto_patchelf(
     # Add all shared objects of the current output path to the cache,
     # before lib_dirs, so that they are chosen first in find_dependency.
     if search_existing:
-        populate_cache(paths_to_patch, recursive)
+        paths_soname_cache = generate_cache(paths_to_patch, recursive)
+    else:
+        paths_soname_cache = None
 
-    populate_cache(lib_dirs)
+    libs_soname_cache = generate_cache(lib_dirs)
 
     dependencies = []
     for path in chain.from_iterable(glob(p, "*", recursive) for p in paths_to_patch):
         if not path.is_symlink() and path.is_file():
             dependencies += auto_patchelf_file(
-                path, runtime_deps, append_rpaths, keep_libc, keep_rpath, extra_args
+                paths_soname_cache,
+                libs_soname_cache,
+                path,
+                runtime_deps,
+                append_rpaths,
+                keep_libc,
+                keep_rpath,
+                add_existing,
+                extra_args,
             )
 
     missing = [dep for dep in dependencies if not dep.found]
@@ -453,6 +512,12 @@ def main() -> None:
         help="Do not search the existing rpaths of the patched files when searching for dependencies.",
     )
     parser.add_argument(
+        "--no-add-existing",
+        dest="add_existing",
+        action="store_false",
+        help="Do not add dependencies existing in existing rpaths of the patched files to rpath.",
+    )
+    parser.add_argument(
         "--keep-rpath",
         dest="keep_rpath",
         action="store_true",
@@ -482,6 +547,7 @@ def main() -> None:
         append_rpaths=args.append_rpaths,
         keep_libc=args.keep_libc,
         search_existing=args.search_existing,
+        add_existing=args.add_existing,
         keep_rpath=args.keep_rpath,
         extra_args=args.extra_args,
     )
