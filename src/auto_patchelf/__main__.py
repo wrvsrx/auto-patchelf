@@ -236,6 +236,10 @@ class Dependency:
 
 
 def auto_patchelf_file(
+    interpreter_path: Path,
+    interpreter_osabi: str,
+    interpreter_arch: str,
+    libc_lib: Path,
     paths_cache: Optional[SonameCache],
     libs_cache: SonameCache,
     path: Path,
@@ -381,6 +385,10 @@ def auto_patchelf_file(
 
 
 def auto_patchelf(
+    interpreter_path: Path,
+    interpreter_osabi: str,
+    interpreter_arch: str,
+    libc_lib: Path,
     paths_to_patch: list[Path],
     lib_dirs: list[Path],
     runtime_deps: list[Path],
@@ -409,6 +417,10 @@ def auto_patchelf(
     for path in chain.from_iterable(glob(p, "*", recursive) for p in paths_to_patch):
         if not path.is_symlink() and path.is_file():
             dependencies += auto_patchelf_file(
+                interpreter_path,
+                interpreter_osabi,
+                interpreter_arch,
+                libc_lib,
                 paths_soname_cache,
                 libs_soname_cache,
                 path,
@@ -446,7 +458,12 @@ def auto_patchelf(
         )
 
 
-def main_() -> None:
+def main_(
+    interpreter_path: Path,
+    interpreter_osabi: str,
+    interpreter_arch: str,
+    libc_lib: Path,
+) -> None:
     parser = argparse.ArgumentParser(
         prog="auto-patchelf",
         description="auto-patchelf tries as hard as possible to patch the"
@@ -539,6 +556,10 @@ def main_() -> None:
     pprint.pprint(vars(args))
 
     auto_patchelf(
+        interpreter_path,
+        interpreter_osabi,
+        interpreter_arch,
+        libc_lib,
         args.paths,
         args.libs,
         args.runtime_dependencies,
@@ -566,7 +587,12 @@ def main():
         interpreter_arch = get_arch(interpreter)
 
     if interpreter_arch and interpreter_osabi and interpreter_path and libc_lib:
-        main_()
+        main_(
+            interpreter_path,
+            interpreter_osabi,
+            interpreter_arch,
+            libc_lib,
+        )
     else:
         sys.exit("Failed to parse dynamic linker (ld) properties.")
 
